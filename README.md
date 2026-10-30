@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# $watt
 
-## Getting Started
+the hamster that keeps solana running. a one-page memecoin concept site: hold to pump, a three-frame scroll comic, and the contract address.
 
-First, run the development server:
+no backend, no wallet connection, no database.
+
+## run
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+open http://localhost:3000. the hamster lab with every state is at `/dev/hamster`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## before launch
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+edit `config.ts`:
 
-## Learn More
+```ts
+export const CONFIG = {
+  ticker: "$WATT",
+  contractAddress: "PASTE_CA_HERE",
+  pumpFunUrl: "https://pump.fun/PASTE_CA_HERE",
+  xUrl: "https://x.com/PASTE",
+  telegramUrl: "https://t.me/PASTE",
+};
+```
 
-To learn more about Next.js, take a look at the following resources:
+## where things live
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| file | what |
+| --- | --- |
+| `components/Game.tsx` | hero game: hold (mouse, touch, space) to pump, hidden crash point, candle canvas, haptics |
+| `components/Hamster.tsx` | layered svg hamster. states: `idle` `running` `overheat` `win` `knocked` `wave` |
+| `components/Wheel.tsx` | glowing wheel; the rotor is its own svg so spinning it stays on the compositor |
+| `components/WeldText.tsx` | welded headings (gsap + scrolltrigger); fades in under reduced motion |
+| `components/Comic.tsx` | pinned three-frame scroll comic, click the hamster 10× |
+| `components/Contract.tsx` | riveted panel, copy-to-clipboard ca, buy button, footer |
+| `components/Nav.tsx` | sticky nav, sound toggle, connect wallet, weld-seam scroll progress |
+| `lib/fx.ts` | one full-screen particle canvas (sparks, coins, smoke); idles when empty |
+| `lib/sound.ts` | web audio synth (whir, clink, crack, sizzle), off by default |
+| `app/globals.css` | color tokens, hamster state animations, grain and scanlines |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## game tuning
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+in `components/Game.tsx`: `K` sets how fast the multiplier grows (`m = e^(K·t)`), and `rollCrash()` sets the crash distribution (about 8% under 2x, 68% 2–10x, 18% 10–50x, 6% 50x+). the best score lives in react state only.
