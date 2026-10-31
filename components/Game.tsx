@@ -109,7 +109,7 @@ export function Game() {
   const [lightsOut, setLightsOut] = useState(false);
   const [holding, setHolding] = useState(false);
   // ranked play: the signed-in wallet's weekly coins live on the server
-  const { me, connecting, error: authError } = useRanked();
+  const { me, connecting } = useRanked();
   const meRef = useRef(me);
   meRef.current = me;
   const [bet, setBet] = useState<Bet>(10);
@@ -1010,7 +1010,7 @@ export function Game() {
           )}
         </div>
         <p className="mt-2 h-4 text-center text-[12px] text-muted" aria-live="polite">
-          {notice ?? authError ?? ""}
+          {notice ?? ""}
         </p>
       </div>
     </section>

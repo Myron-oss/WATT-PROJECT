@@ -30,7 +30,8 @@ export type RoundResult = {
   seed: string;
 };
 
-type State = { me: Me | null; loading: boolean; connecting: boolean; error: string | null };
+export type AuthError = { text: string; link?: { href: string; label: string } };
+type State = { me: Me | null; loading: boolean; connecting: boolean; error: AuthError | null };
 
 let state: State = { me: null, loading: true, connecting: false, error: null };
 const subs = new Set<() => void>();
@@ -51,6 +52,8 @@ export function useRanked() {
 }
 
 /** patch the local copy (e.g. coins after a round) without a round-trip */
+export const clearAuthError = () => set({ error: null });
+
 export const patchMe = (p: Partial<Me>) => state.me && set({ me: { ...state.me, ...p } });
 
 async function api<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
@@ -93,32 +96,84 @@ function phantom(): Phantom | null {
   return p?.isPhantom ? p : null;
 }
 
+/** phantom injects itself shortly after load; give it a moment before deciding it isn't there */
+function waitForPhantom(ms = 1500): Promise<Phantom | null> {
+  const now = phantom();
+  if (now) return Promise.resolve(now);
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const done = () => {
+      clearInterval(t);
+      window.removeEventListener("phantom#initialized", done);
+      resolve(phantom());
+    };
+    const t = setInterval(() => {
+      if (phantom() || Date.now() - started > ms) done();
+    }, 100);
+    window.addEventListener("phantom#initialized", done, { once: true });
+  });
+}
+
 const isMobile = () => /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+
+const SERVER_ERRORS: Record<string, string> = {
+  bad_wallet: "phantom returned an address the server didn't accept",
+  bad_signature: "the signature didn't check out, try again",
+  bad_request: "sign-in request was malformed, reload and retry",
+  server: "the sign-in server isn't set up (SESSION_SECRET / redis), see README",
+};
 
 /** connect phantom, sign the one-time message, start a session */
 export async function connectPhantom() {
-  const p = phantom();
+  set({ connecting: true, error: null });
+  const p = await waitForPhantom();
   if (!p) {
-    // no extension: on phones open this page inside phantom's browser, on desktop go get it
-    const url = isMobile()
-      ? `https://phantom.app/ul/browse/${encodeURIComponent(location.href)}?ref=${encodeURIComponent(location.origin)}`
-      : "https://phantom.app/download";
-    window.open(url, "_blank", "noopener,noreferrer");
+    set({ connecting: false });
+    if (isMobile()) {
+      // phones: reopen this page inside phantom's own browser
+      const url = `https://phantom.app/ul/browse/${encodeURIComponent(location.href)}?ref=${encodeURIComponent(location.origin)}`;
+      set({ error: { text: "phantom isn't in this browser.", link: { href: url, label: "open in phantom" } } });
+      return;
+    }
+    set({
+      error: {
+        text: "phantom isn't installed in this browser. use chrome, brave or firefox with the phantom extension.",
+        link: { href: "https://phantom.app/download", label: "get phantom" },
+      },
+    });
     return;
   }
-  set({ connecting: true, error: null });
+  let step = "connect";
   try {
     const { publicKey } = await p.connect();
     const wallet = publicKey.toString();
+    step = "nonce";
     const { message } = await api<{ message: string }>("/api/auth/nonce", { wallet });
+    step = "sign";
     const { signature } = await p.signMessage(new TextEncoder().encode(message), "utf8");
     let bin = "";
     signature.forEach((b) => (bin += String.fromCharCode(b)));
+    step = "verify";
     await api("/api/auth/verify", { wallet, signature: btoa(bin) });
-    await refreshMe();
+    if (!(await refreshMe())) throw Object.assign(new Error("no session"), { code: "no_session" });
   } catch (e) {
     const code = (e as { code?: number | string }).code;
-    set({ error: code === 4001 ? "cancelled in phantom" : "couldn't sign in, try again" });
+    const text =
+      code === 4001
+        ? step === "connect"
+          ? "connection cancelled in phantom"
+          : "signature cancelled in phantom"
+        : code === -32603 || code === 4100
+          ? "phantom is locked or not ready, open it and try again"
+          : code === "no_session"
+            ? "signed in, but the browser didn't keep the login cookie (blocked cookies?)"
+            : typeof code === "string" && SERVER_ERRORS[code]
+              ? SERVER_ERRORS[code]
+              : step === "nonce" || step === "verify"
+                ? "can't reach the sign-in server, try again"
+                : "phantom didn't respond, try again";
+    console.warn("[watt] phantom sign-in failed at", step, e);
+    set({ error: { text } });
   } finally {
     set({ connecting: false });
   }

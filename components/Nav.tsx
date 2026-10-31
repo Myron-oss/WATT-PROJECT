@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { scrollToId } from "@/lib/nav";
-import { connectPhantom, shortWallet, useRanked } from "@/lib/ranked";
+import { clearAuthError, connectPhantom, shortWallet, useRanked } from "@/lib/ranked";
 import { isSoundOn, onSound, setSound } from "@/lib/sound";
 
 const LINKS = [
@@ -16,7 +16,14 @@ export function Nav() {
   const seamRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const [sound, setSoundState] = useState(false);
-  const { me, connecting } = useRanked();
+  const { me, connecting, error } = useRanked();
+
+  // sign-in problems from any connect button show up here, then fade after a while
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(clearAuthError, 9000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   useEffect(() => {
     setSoundState(isSoundOn());
@@ -125,6 +132,26 @@ export function Nav() {
             </button>
           )}
         </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="bubble absolute right-3 top-[calc(100%+10px)] flex max-w-[min(92vw,420px)] items-start gap-3 rounded-2xl border border-danger/40 bg-[rgb(20_12_18/0.95)] px-4 py-3 text-[13px] leading-snug text-ink shadow-[0_12px_40px_rgb(0_0_0/0.6)] backdrop-blur-md md:right-6"
+          >
+            <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-danger shadow-[0_0_8px_#FF3B5C]" aria-hidden />
+            <span>
+              {error.text}
+              {error.link && (
+                <a href={error.link.href} target="_blank" rel="noreferrer" className="ml-1.5 font-semibold text-energy underline underline-offset-2">
+                  {error.link.label}
+                </a>
+              )}
+            </span>
+            <button type="button" onClick={clearAuthError} aria-label="dismiss" className="press -mr-1 text-ink/50 hover:text-ink">
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* weld seam progress */}
         <div className="pointer-events-none absolute inset-x-0 bottom-[-1px] h-[2px]" aria-hidden>
