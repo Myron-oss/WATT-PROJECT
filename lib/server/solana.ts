@@ -1,47 +1,61 @@
 /**
  * $WATT balance of a wallet, read straight from a Solana RPC (works for SPL Token and Token-2022 mints).
- * Cached for a few minutes so the leaderboard doesn't hammer the RPC.
+ *
+ * Built to live on the free public RPC: answers are cached for 30 minutes, a "too many requests"
+ * gets two short retries, and if the RPC still fails the last known balance (up to a day old) is used.
+ * Set SOLANA_RPC_URL (e.g. a free Helius key) to lift the limits entirely.
  */
 import { CONFIG } from "@/config";
 import { getStore } from "./store";
 import { isWallet } from "./session";
 
 const RPC = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
-const CACHE_S = 1800; // holdings rarely change mid-week; 30 min keeps the rpc quiet
+const FRESH_MS = 30 * 60_000; // holdings rarely change mid-week
+const KEEP_S = 86_400; // stale fallback window
 
-/** null when the token address isn't configured yet or the RPC can't be reached */
+type Cached = { v: number; at: number };
+type Acc = { account: { data: { parsed: { info: { tokenAmount: { uiAmount: number | null } } } } } };
+
+async function rpcBalance(wallet: string, mint: string): Promise<number | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(RPC, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "getTokenAccountsByOwner",
+          params: [wallet, { mint }, { encoding: "jsonParsed", commitment: "confirmed" }],
+        }),
+        cache: "no-store",
+        signal: AbortSignal.timeout(6000),
+      });
+      if (res.status === 429 || res.status >= 500) throw new Error(`rpc ${res.status}`);
+      const json = await res.json();
+      if (json.error) return null; // a real answer: bad params etc., retrying won't help
+      const value = json.result?.value as Acc[] | undefined;
+      if (!value) return null;
+      return value.reduce((sum, a) => sum + (a.account.data.parsed.info.tokenAmount.uiAmount ?? 0), 0);
+    } catch {
+      if (attempt < 2) await new Promise((ok) => setTimeout(ok, 400 * 2 ** attempt + Math.random() * 300));
+    }
+  }
+  return null;
+}
+
+/** null when the token address isn't configured yet, or the rpc failed and nothing was cached */
 export async function wattBalance(wallet: string): Promise<number | null> {
   const mint = CONFIG.contractAddress;
   if (!isWallet(mint)) return null;
   const store = getStore();
   const key = `b:${wallet}`;
-  const cached = await store.get<{ v: number }>(key);
-  if (cached) return cached.v;
-  try {
-    const res = await fetch(RPC, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "getTokenAccountsByOwner",
-        params: [wallet, { mint }, { encoding: "jsonParsed", commitment: "confirmed" }],
-      }),
-      cache: "no-store",
-    });
-    const json = await res.json();
-    if (json.error) return null;
-    type Acc = { account: { data: { parsed: { info: { tokenAmount: { uiAmount: number | null } } } } } };
-    const v = (json.result?.value as Acc[] | undefined)?.reduce(
-      (sum, a) => sum + (a.account.data.parsed.info.tokenAmount.uiAmount ?? 0),
-      0,
-    );
-    if (v === undefined) return null;
-    await store.set(key, { v }, { ex: CACHE_S });
-    return v;
-  } catch {
-    return null;
-  }
+  const cached = await store.get<Cached>(key);
+  if (cached && Date.now() - cached.at < FRESH_MS) return cached.v;
+  const v = await rpcBalance(wallet, mint);
+  if (v === null) return cached?.v ?? null; // rpc busy: last known balance beats "unknown"
+  await store.set(key, { v, at: Date.now() } satisfies Cached, { ex: KEEP_S });
+  return v;
 }
 
 export async function isEligible(wallet: string): Promise<boolean | null> {
