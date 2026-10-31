@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { goToCa, scrollToId } from "@/lib/nav";
+import { scrollToId } from "@/lib/nav";
+import { connectPhantom, shortWallet, useRanked } from "@/lib/ranked";
 import { isSoundOn, onSound, setSound } from "@/lib/sound";
 
 const LINKS = [
   { id: "play", label: "play" },
   { id: "hamster", label: "hamster" },
+  { id: "top", label: "top" },
   { id: "ca", label: "ca" },
 ];
 
@@ -14,6 +16,7 @@ export function Nav() {
   const seamRef = useRef<HTMLDivElement>(null);
   const tipRef = useRef<HTMLDivElement>(null);
   const [sound, setSoundState] = useState(false);
+  const { me, connecting } = useRanked();
 
   useEffect(() => {
     setSoundState(isSoundOn());
@@ -103,13 +106,24 @@ export function Nav() {
               )}
             </svg>
           </button>
-          <button
-            type="button"
-            onClick={goToCa}
-            className="press whitespace-nowrap rounded-full border border-energy/50 bg-energy/15 px-3.5 py-2 text-[13px] font-semibold text-ink hover:bg-energy/25 md:px-4 md:text-sm"
-          >
-            connect wallet
-          </button>
+          {me ? (
+            <button
+              type="button"
+              onClick={() => scrollToId("top")}
+              className="press whitespace-nowrap rounded-full border border-energy/50 bg-energy/15 px-3.5 py-2 font-mono text-[12px] font-semibold text-ink hover:bg-energy/25 md:px-4 md:text-[13px]"
+            >
+              {shortWallet(me.wallet)}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void connectPhantom()}
+              disabled={connecting}
+              className="press whitespace-nowrap rounded-full border border-energy/50 bg-energy/15 px-3.5 py-2 text-[13px] font-semibold text-ink hover:bg-energy/25 disabled:opacity-60 md:px-4 md:text-sm"
+            >
+              {connecting ? "…" : <>connect<span className="hidden sm:inline"> phantom</span></>}
+            </button>
+          )}
         </div>
 
         {/* weld seam progress */}

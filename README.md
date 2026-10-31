@@ -44,4 +44,52 @@ export const CONFIG = {
 
 ## game tuning
 
-in `components/Game.tsx`: `K` sets how fast the multiplier grows (`m = e^(K·t)`), and `rollCrash()` sets the crash distribution (about 8% under 2x, 68% 2–10x, 18% 10–50x, 6% 50x+). the best score lives in react state only.
+in `components/Game.tsx`: `GROW_A` / `GROW_B` set how fast the multiplier grows (`m = e^(A·t + B·t²)`: 2x ≈ 5s, 10x ≈ 11s, 100x ≈ 17s), and `rollCrash()` sets the crash point (`P(crash ≥ x) = 0.97 / x`, so ~3% bust instantly). bets, payouts and the one-time follow bonus live in `lib/wallet.ts` and this browser's storage.
+
+## weekly leaderboard (phantom)
+
+signed-out visitors play free practice rounds. connecting phantom signs a one-time message (not a transaction) and joins the weekly game:
+
+- every wallet gets `weeklyCoins` (100) each monday 00:00 utc; the balance at sunday 23:59 utc is the score
+- the server runs every ranked round: it picks the crash point before the round (sha256 of the seed is returned at start, the seed is revealed after), and times the cash-out when the request arrives
+- top 10 win `prizesSol`, but only wallets holding at least `minWattForPrize` $watt when prizes are paid; an ineligible wallet's prize goes to the next eligible one
+- coins are play money: they can't be bought, sold or withdrawn
+
+all knobs live in `config.ts`. server code is in `lib/server/` and `app/api/`.
+
+### setup
+
+1. set `contractAddress` in `config.ts` to the real token (eligibility can't be checked before that)
+2. copy `.env.example` to `.env.local` and fill it in; add the same keys on vercel
+3. on vercel: storage → create upstash for redis → connect to the project (it sets `KV_REST_API_URL` / `KV_REST_API_TOKEN`)
+
+locally, without redis, everything is stored in `.data/store.json`.
+
+### paying the week
+
+```bash
+node scripts/payout.mjs                                   # dry run for last week: winners, $watt check, amounts
+node scripts/payout.mjs --keypair ~/prizes.json --send    # asks you to type PAY, then sends sol
+```
+
+use a separate wallet that only holds that week's prize money. every transfer is recorded, so rerunning never pays a wallet twice. run it with the production redis env vars set (e.g. `vercel env pull .env.local` first).
+
+## promo video
+
+a 17-second promo made with [remotion](https://www.remotion.dev), reusing the site's hamster, wheel, voltmeter, colors and fonts.
+
+```bash
+npm run video          # renders out/watt-promo-1920x1080.mp4 and out/watt-promo-1080x1920.mp4
+npm run video:studio   # live preview / scrubbing in remotion studio
+```
+
+| file | what |
+| --- | --- |
+| `video/timeline.json` | scene cuts and the two multiplier curves (shared by picture and sound) |
+| `video/Promo.tsx` | the film: 7 scenes, both formats from one component |
+| `video/Weld.tsx` | frame-driven version of the welded headings |
+| `video/lib.ts` | curves, wheel/leg integration, deterministic particles |
+| `video/video.css` | pauses the site's css animations and scrubs them from the frame clock |
+| `video/audio/make-sounds.mjs` | renders the sound effects to `video/public/sfx/*.wav` (motor rev, ticks, crack, power-down, coins, jingle…) |
+
+fonts load from google fonts at render time, so rendering needs a network connection.

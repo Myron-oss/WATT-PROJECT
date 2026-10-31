@@ -5,6 +5,8 @@ import { forwardRef, type ReactNode } from "react";
 type Props = {
   /** seconds per revolution for CSS spinning; omit to drive rotation yourself through the ref */
   spin?: number;
+  /** fixed rotor angle in degrees (frame-driven rendering) */
+  angle?: number;
   /** 0..1 glow strength */
   glow?: number;
   /** dims the wheel to a dead, unlit silhouette */
@@ -29,7 +31,7 @@ const SPOKES = Array.from({ length: 6 }, (_, i) => {
 
 /** Glowing hamster wheel. The rotor is its own <svg> so rotating it is a composite-only transform. */
 export const Wheel = forwardRef<SVGSVGElement, Props>(function Wheel(
-  { spin, glow = 0.6, dead, hidden, glowRef, className, children },
+  { spin, angle, glow = 0.6, dead, hidden, glowRef, className, children },
   rotorRef,
 ) {
   const frameOpacity = hidden ? 0 : dead ? 0.35 : 1;
@@ -60,6 +62,7 @@ export const Wheel = forwardRef<SVGSVGElement, Props>(function Wheel(
         style={{
           opacity: frameOpacity,
           animation: spin ? `spin ${spin}s linear infinite` : undefined,
+          transform: angle === undefined ? undefined : `rotate(${angle}deg)`,
         }}
         aria-hidden
       >

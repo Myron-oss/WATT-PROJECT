@@ -17,6 +17,9 @@ type Props = {
   cableLoose?: boolean;
   /** pupils track the pointer */
   follow?: boolean;
+  /** frame-driven overrides (video): goggles 0 = up … 1 = down, fixed pupil offset */
+  gogglesT?: number;
+  look?: Point;
   className?: string;
   style?: CSSProperties;
 };
@@ -41,7 +44,7 @@ const EYES = [
  * Forward the ref to reach the root <svg> (e.g. to set --ham-cycle without re-rendering).
  */
 export const Hamster = forwardRef<SVGSVGElement, Props>(function Hamster(
-  { state = "idle", speed = 0.5, goggles = "up", cableTo, cableLoose, follow, className, style },
+  { state = "idle", speed = 0.5, goggles = "up", cableTo, cableLoose, follow, gogglesT, look, className, style },
   ref,
 ) {
   const uid = useId().replace(/:/g, "");
@@ -232,7 +235,7 @@ export const Hamster = forwardRef<SVGSVGElement, Props>(function Hamster(
               </g>
             ))}
           {eyeMode === "open" && (
-            <g ref={pupilsRef}>
+            <g ref={pupilsRef} transform={look ? `translate(${look.x} ${look.y})` : undefined}>
               {EYES.map((e, i) => (
                 <g key={i}>
                   <circle cx={e.x + 1.8} cy={e.y - 2.4} r={e.r * 0.34} fill="#fff" />
@@ -271,7 +274,11 @@ export const Hamster = forwardRef<SVGSVGElement, Props>(function Hamster(
             ))}
 
           {/* welding goggles */}
-          <g className="ham-goggles" data-down={goggles === "down"}>
+          <g
+            className="ham-goggles"
+            data-down={goggles === "down"}
+            style={gogglesT === undefined ? undefined : { transform: `translate(${gogglesT}px, ${gogglesT * 26}px)` }}
+          >
             <path d="M126 92 Q168 64 220 82" fill="none" stroke={OL} strokeWidth="14" strokeLinecap="round" />
             <path d="M126 92 Q168 64 220 82" fill="none" stroke="#2a2235" strokeWidth="7" strokeLinecap="round" />
             {[

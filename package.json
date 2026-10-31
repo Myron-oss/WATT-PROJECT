@@ -6,13 +6,22 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "video": "node video/audio/make-sounds.mjs && remotion render video/index.ts Promo out/watt-promo-1920x1080.mp4 && remotion render video/index.ts PromoVertical out/watt-promo-1080x1920.mp4",
+    "video:studio": "node video/audio/make-sounds.mjs && remotion studio video/index.ts"
   },
   "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "@remotion/tailwind-v4": "4.0.539",
+    "@solana/web3.js": "^1.99.0",
+    "@upstash/redis": "^1.40.0",
+    "bs58": "^6.0.0",
     "gsap": "^3.15.0",
     "next": "15.5.28",
     "react": "19.1.0",
-    "react-dom": "19.1.0"
+    "react-dom": "19.1.0",
+    "remotion": "4.0.539",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

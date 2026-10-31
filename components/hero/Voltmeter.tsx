@@ -25,16 +25,20 @@ const LABELS = [1, 2, 5, 10, 25, 50, 100];
 const MINOR = [1.5, 3, 4, 7, 15, 20, 35, 70];
 
 type Props = {
-  needleRef: Ref<SVGSVGElement>;
-  numRef: Ref<HTMLSpanElement>;
+  needleRef?: Ref<SVGSVGElement>;
+  numRef?: Ref<HTMLSpanElement>;
+  /** frame-driven overrides (video): needle angle in degrees and readout text */
+  needle?: number;
+  label?: string;
+  className?: string;
   tone: "idle" | "pump" | "hot";
 };
 
-export function Voltmeter({ needleRef, numRef, tone }: Props) {
+export function Voltmeter({ needleRef, numRef, tone, needle, label, className }: Props) {
   const numColor = tone === "hot" ? "#FF3B5C" : tone === "pump" ? "#3DFF8A" : "rgb(236 232 244 / 0.55)";
   const numGlow = tone === "hot" ? "0 0 18px rgb(255 59 92 / 0.7)" : tone === "pump" ? "0 0 22px rgb(61 255 138 / 0.6)" : "none";
   return (
-    <div className="relative aspect-[260/170] w-[min(60vw,25svh,240px)]">
+    <div className={`relative aspect-[260/170] ${className ?? "w-[min(60vw,25svh,240px)]"}`}>
       <svg viewBox="0 0 260 170" className="absolute inset-0 h-full w-full" aria-hidden>
         <defs>
           <linearGradient id="vm-bezel" x1="0" y1="0" x2="0" y2="1">
@@ -90,7 +94,7 @@ export function Voltmeter({ needleRef, numRef, tone }: Props) {
         className="absolute inset-x-0 top-[71%] text-center font-mono font-bold leading-none tabular-nums transition-colors duration-200"
         style={{ fontSize: "min(9vw, 4.6svh, 40px)", color: numColor, textShadow: numGlow }}
       >
-        1.00x
+        {label ?? "1.00x"}
       </span>
 
       {/* needle: own layer, rotated on the compositor */}
@@ -98,7 +102,7 @@ export function Voltmeter({ needleRef, numRef, tone }: Props) {
         ref={needleRef}
         viewBox="0 0 260 170"
         className="absolute inset-0 h-full w-full"
-        style={{ transformOrigin: `${(CX / 260) * 100}% ${(CY / 170) * 100}%`, transform: `rotate(${NEEDLE_MIN}deg)` }}
+        style={{ transformOrigin: `${(CX / 260) * 100}% ${(CY / 170) * 100}%`, transform: `rotate(${needle ?? NEEDLE_MIN}deg)` }}
         aria-hidden
       >
         <path d={`M${CX - 2.4} ${CY} L${CX} ${CY - 92} L${CX + 2.4} ${CY} Z`} fill="#FF9F43" style={{ filter: "drop-shadow(0 0 4px rgb(255 159 67 / 0.8))" }} />

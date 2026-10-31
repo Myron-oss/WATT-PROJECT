@@ -1,0 +1,37 @@
+/*
+ * Video: every CSS animation on the site's components is paused and scrubbed
+ * from the frame clock (--clock, seconds), so each rendered frame is deterministic.
+ */
+.vclock *,
+.vclock *::before,
+.vclock *::after {
+  transition: none !important;
+}
+.vclock .ham,
+.vclock .ham * {
+  animation-play-state: paused !important;
+  animation-delay: calc(var(--clock) * -1s) !important;
+}
+.vclock .ham .ham-lid,
+.vclock .ham .ham-yawn {
+  animation-delay: calc(var(--clock) * -1s + var(--ham-delay, 0s)) !important;
+}
+/* legs follow an integrated phase so speed changes don't make them jump */
+.vclock .ham[data-state="running"] .ham-leg,
+.vclock .ham[data-state="running"] .ham-body {
+  animation-delay: calc(var(--legphase, 0) * var(--ham-cycle) * -1) !important;
+}
+.vclock .ham[data-state="running"] .ham-leg-b2,
+.vclock .ham[data-state="running"] .ham-leg-f1 {
+  animation-delay: calc((var(--legphase, 0) + 0.5) * var(--ham-cycle) * -1) !important;
+}
+.vclock .ham[data-state="overheat"] .ham-leg-b2,
+.vclock .ham[data-state="overheat"] .ham-leg-f1 {
+  animation-delay: calc(var(--clock) * -1s - 0.045s) !important;
+}
+.vclock .ham .ham-smoke circle:nth-child(2) {
+  animation-delay: calc(var(--clock) * -1s - 0.37s) !important;
+}
+.vclock .ham .ham-smoke circle:nth-child(3) {
+  animation-delay: calc(var(--clock) * -1s - 0.74s) !important;
+}

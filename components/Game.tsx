@@ -9,22 +9,28 @@ import { Voltmeter, needleAngle, NEEDLE_MIN } from "./hero/Voltmeter";
 import { Foreground } from "./hero/Foreground";
 import { coins, seeds, smoke, sparks, sprite } from "@/lib/fx";
 import { clack, clink, crack, engine, engineStop, redPulse, RED_ZONE } from "@/lib/sound";
-import { goToCa } from "@/lib/nav";
+import { scrollToId } from "@/lib/nav";
 import { CONFIG } from "@/config";
+import { crashFrom, growth, rand01 } from "@/lib/curve";
+import {
+  cashoutRanked,
+  connectPhantom,
+  patchMe,
+  refreshMe,
+  shortWallet,
+  startRanked,
+  useRanked,
+  waitRanked,
+  type RoundResult,
+} from "@/lib/ranked";
 
 type Phase = "ready" | "running" | "overheat" | "knocked" | "win";
 
-const K = 0.31; // multiplier growth: m = e^(K·t)  → 2x ≈ 2.2s, 10x ≈ 7.4s, 100x ≈ 15s
+/** practice rounds (signed out) roll their own crash point; ranked rounds get it from the server */
+const rollCrash = () => crashFrom(rand01());
 
-/** hidden crash point: mostly 2–10x, sometimes 10–50x, rarely 50x+ */
-function rollCrash() {
-  const lu = (a: number, b: number) => Math.exp(Math.log(a) + Math.random() * (Math.log(b) - Math.log(a)));
-  const r = Math.random();
-  if (r < 0.08) return lu(1.15, 2);
-  if (r < 0.76) return lu(2, 10);
-  if (r < 0.94) return lu(10, 50);
-  return lu(50, 260);
-}
+const BETS = [5, 10, 25, "all"] as const;
+type Bet = (typeof BETS)[number];
 
 const vibrate = (p: number | number[]) => {
   try {
@@ -79,6 +85,17 @@ const ledsReturn = (st: Timed) => {
   st.leds.forEach((el, k) => later(st, () => setLed(el, ""), k * 36));
 };
 
+function CoinIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden>
+      <circle cx="12" cy="12" r="11" fill="#1b0f07" />
+      <circle cx="12" cy="12" r="9.2" fill="#FFE14D" />
+      <circle cx="12" cy="12" r="6" fill="none" stroke="#a87200" strokeWidth="1.4" />
+      <path d="M13 6.5 9 12.6h2.6L10.8 17.5l4.3-6.3h-2.6L13 6.5Z" fill="#a87200" />
+    </svg>
+  );
+}
+
 type Mote = { x: number; y: number; vx: number; vy: number; s: number; a: number; warm: boolean };
 type Riser = { x: number; y: number; vy: number; ph: number; rot: number; vr: number; s: number; coin: boolean; life: number };
 
@@ -91,6 +108,14 @@ export function Game() {
   const [cheer, setCheer] = useState(false);
   const [lightsOut, setLightsOut] = useState(false);
   const [holding, setHolding] = useState(false);
+  // ranked play: the signed-in wallet's weekly coins live on the server
+  const { me, connecting, error: authError } = useRanked();
+  const meRef = useRef(me);
+  meRef.current = me;
+  const [bet, setBet] = useState<Bet>(10);
+  const [delta, setDelta] = useState<{ v: number; k: number } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const balanceRef = useRef<HTMLDivElement>(null);
 
   const sectionRef = useRef<HTMLElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -145,6 +170,13 @@ export function Game() {
     motes: [] as Mote[],
     risers: [] as Riser[],
     timers: [] as number[],
+    // ranked round bookkeeping
+    roundId: null as string | null,
+    stake: 0,
+    pending: false, // waiting for the server to start the round
+    released: false, // let go before the start came back
+    settling: false, // cash-out sent, waiting for the server's verdict
+    abort: null as AbortController | null,
   });
 
   const setPhase = useCallback((p: Phase) => {
@@ -164,14 +196,38 @@ export function Game() {
     });
   };
 
+  // ----- ranked -----
+  const betRef = useRef<Bet>(10);
+  betRef.current = bet;
+  const stakeFor = (b: Bet, coins: number) => (b === "all" ? coins : Math.min(b, coins));
+  const showDelta = (v: number) => setDelta({ v, k: performance.now() });
+  const nudge = (el: Element | null) =>
+    el?.animate(
+      [{ transform: "translateX(0)" }, { transform: "translateX(-6px)" }, { transform: "translateX(6px)" }, { transform: "translateX(0)" }],
+      { duration: 260, easing: "cubic-bezier(0.23, 1, 0.32, 1)" },
+    );
+
+  useEffect(() => {
+    refreshMe().then((m) => {
+      // a round left running in a closed tab: let it finish on the server first
+      if (m?.active) {
+        setNotice("finishing your last round…");
+        waitRanked(m.active, new AbortController().signal)
+          .then(() => refreshMe())
+          .finally(() => setNotice(null));
+      }
+    });
+  }, []);
+
   // ----- round flow -----
-  const startRound = useCallback(() => {
+  const startRound = useCallback((crash: number) => {
     const st = s.current;
     clearTimers(st);
     resetLeds(st);
     st.t = 0;
     st.m = 1;
-    st.crash = rollCrash();
+    st.crash = crash;
+    st.settling = false;
     setShowAgain(false);
     setLightsOut(false);
     setCheer(false);
@@ -180,11 +236,13 @@ export function Game() {
     vibrate(12);
   }, [setPhase]);
 
-  const cashOut = useCallback(() => {
+  /** win visuals; m and payout come from the server in ranked play */
+  const cashOut = useCallback((m: number, payout?: number) => {
     const st = s.current;
-    const m = st.m;
+    st.m = m;
     setPhase("win");
     setBest((b) => Math.max(b, m));
+    if (payout !== undefined) showDelta(payout - st.stake);
     if (numRef.current) numRef.current.textContent = `${m.toFixed(2)}x`;
     st.lockUntil = performance.now() + 650;
 
@@ -225,6 +283,7 @@ export function Game() {
     const st = s.current;
     st.m = st.crash;
     setPhase("overheat");
+    if (st.stake) showDelta(-st.stake); // the stake is already gone
     if (numRef.current) numRef.current.textContent = `${st.crash.toFixed(2)}x`;
     crack();
     engineStop("die");
@@ -261,18 +320,100 @@ export function Game() {
     }, 2500);
   }, [setPhase]);
 
+  /** the server's verdict on a ranked round */
+  const finish = useCallback(
+    (r: RoundResult) => {
+      const st = s.current;
+      if (st.roundId !== r.id) return; // already handled
+      st.roundId = null;
+      st.abort?.abort();
+      st.settling = false;
+      patchMe({ coins: r.coins });
+      if (r.state === "won") cashOut(r.m, r.payout);
+      else {
+        st.crash = r.crash;
+        overheat();
+      }
+      setTimeout(() => void refreshMe(), 1200); // rank may have moved
+    },
+    [cashOut, overheat],
+  );
+
+  const settleRanked = useCallback(() => {
+    const st = s.current;
+    if (!st.roundId || st.settling) return;
+    st.settling = true; // freeze the readout until the server answers
+    cashoutRanked(st.roundId)
+      .then(finish)
+      .catch(() => {
+        st.settling = false; // the crash long-poll will still resolve it
+      });
+  }, [finish]);
+
   const press = useCallback(() => {
     const st = s.current;
-    if (st.phase === "running" || st.phase === "overheat") return;
+    if (st.phase === "running" || st.phase === "overheat" || st.pending) return;
     if ((st.phase === "win" || st.phase === "knocked") && performance.now() < st.lockUntil) return;
+    setNotice(null);
+    const signedIn = meRef.current;
+
+    // practice: free, local, no coins
+    if (!signedIn) {
+      st.stake = 0;
+      setHolding(true);
+      startRound(rollCrash());
+      return;
+    }
+
+    const stake = stakeFor(betRef.current, signedIn.coins);
+    if (stake < 1) {
+      nudge(balanceRef.current);
+      return;
+    }
+    st.pending = true;
+    st.released = false;
     setHolding(true);
-    startRound();
-  }, [startRound]);
+    startRanked(stake)
+      .then((r) => {
+        st.pending = false;
+        st.stake = r.bet;
+        st.roundId = r.id;
+        patchMe({ coins: r.coins });
+        startRound(Infinity); // the crash point stays on the server
+        const ac = new AbortController();
+        st.abort = ac;
+        waitRanked(r.id, ac.signal).then(finish, () => {});
+        if (st.released) settleRanked();
+      })
+      .catch((e: { code?: string }) => {
+        st.pending = false;
+        setHolding(false);
+        setNotice(
+          e.code === "signed_out"
+            ? "session expired, connect again"
+            : e.code === "no_coins"
+              ? "out of coins till monday"
+              : e.code === "busy"
+                ? "your last round is still running"
+                : e.code === "too_fast"
+                  ? "easy, one round at a time"
+                  : "couldn't start the round",
+        );
+        void refreshMe();
+      });
+  }, [startRound, finish, settleRanked]);
 
   const release = useCallback(() => {
+    const st = s.current;
     setHolding(false);
-    if (s.current.phase === "running") cashOut();
-  }, [cashOut]);
+    if (st.pending) {
+      st.released = true; // cash out as soon as the round exists
+      return;
+    }
+    if (st.phase !== "running") return;
+    if (st.roundId) settleRanked();
+    else cashOut(st.m);
+  }, [cashOut, settleRanked]);
 
   const holdProps = {
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -425,8 +566,10 @@ export function Game() {
 
       if (ph === "running") {
         st.t += dt;
-        st.m = Math.exp(K * st.t);
-        if (st.m >= st.crash) overheat();
+        if (!st.settling && !st.pending) {
+          st.m = growth(st.t);
+          if (st.m >= st.crash) overheat();
+        }
       }
 
       // speed easing
@@ -631,6 +774,9 @@ export function Game() {
 
   const live = phase === "running" || phase === "overheat";
   const tone = phase === "overheat" || phase === "knocked" ? "hot" : phase === "ready" ? "idle" : "pump";
+  const coinsNow = me?.coins ?? 0;
+  const broke = !!me && coinsNow < 1 && !live && !holding;
+  const bubble = broke ? "broke till monday" : BUBBLE[phase];
   const bgState = (i: number): HamsterState => bgOverride[i] ?? (live && i < alive ? "running" : "idle");
 
   return (
@@ -749,7 +895,7 @@ export function Game() {
               {...holdProps}
             >
               <div ref={shakeRef}>
-                <Wheel ref={rotorRef} glowRef={glowRef} glow={0.3} className="w-[min(74vw,34svh,420px)]">
+                <Wheel ref={rotorRef} glowRef={glowRef} glow={0.3} className="w-[min(72vw,31svh,400px)]">
                   <Hamster
                     ref={hamRef}
                     state={phase === "ready" ? "idle" : phase}
@@ -763,10 +909,10 @@ export function Game() {
             </button>
             <div className="pointer-events-none absolute left-[63%] top-[27%]" aria-live="polite">
               <p
-                key={BUBBLE[phase]}
+                key={bubble}
                 className="bubble relative whitespace-nowrap rounded-2xl rounded-bl-[4px] bg-[#f6efe4] px-3 py-1.5 text-[13px] font-extrabold text-[#1b0f07] shadow-[0_6px_20px_rgb(0_0_0/0.45)]"
               >
-                {BUBBLE[phase]}
+                {bubble}
               </p>
             </div>
           </div>
@@ -778,28 +924,94 @@ export function Game() {
           active
           delay={0.35}
           sparkle={1.6}
-          className="font-logo mt-4 text-[clamp(56px,min(19vw,11.5svh),150px)] leading-[0.9]"
+          className="font-logo mt-3 text-[clamp(52px,min(18vw,10.5svh),140px)] leading-[0.9]"
         />
         <p className="mt-1 text-sm font-medium text-ink/60">he runs. solana stays up.</p>
 
-        <div className="mt-5 flex w-full max-w-md items-center justify-center gap-2.5">
+        {/* ranked: weekly coins + bet · signed out: practice */}
+        <div className="mt-4 flex h-9 w-full max-w-md items-center justify-center gap-2">
+          {me ? (
+            <>
+              <div
+                ref={balanceRef}
+                className="relative flex h-9 items-center gap-1.5 rounded-full border border-ca/30 bg-[rgb(20_17_28/0.7)] pl-1.5 pr-3 font-mono text-[15px] font-bold tabular-nums text-ca backdrop-blur-sm"
+                aria-label={`${coinsNow} coins this week${me.rank ? `, rank ${me.rank}` : ""}`}
+              >
+                <CoinIcon />
+                {coinsNow}
+                {me.rank && <span className="ml-1 text-[12px] font-semibold text-muted">#{me.rank}</span>}
+                {delta && (
+                  <span
+                    key={delta.k}
+                    className={`delta pointer-events-none absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-sm font-extrabold ${delta.v >= 0 ? "text-pump" : "text-danger"}`}
+                  >
+                    {delta.v >= 0 ? `+${delta.v}` : delta.v}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1" role="radiogroup" aria-label="bet">
+                {BETS.map((b) => {
+                  const on = bet === b;
+                  const off = live || holding || (b !== "all" && b > coinsNow);
+                  return (
+                    <button
+                      key={b}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      disabled={off}
+                      onClick={() => setBet(b)}
+                      className={`press h-9 min-w-10 rounded-full px-2.5 font-mono text-[13px] font-bold transition-colors duration-150 disabled:opacity-35 ${
+                        on ? "bg-ca text-[#1a1400]" : "border border-white/10 bg-[rgb(20_17_28/0.6)] text-ink/75 hover:text-ink"
+                      }`}
+                    >
+                      {b}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <p className="flex items-center gap-2 rounded-full border border-white/10 bg-[rgb(20_17_28/0.6)] px-3 py-1.5 text-[12px] font-semibold text-ink/70 backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-energy shadow-[0_0_6px_#8B5CF6]" />
+              practice · connect phantom to play for the weekly prize
+            </p>
+          )}
+        </div>
+
+        <div className="mt-2.5 flex w-full max-w-md items-center justify-center gap-2.5">
           <button
             ref={holdBtnRef}
             type="button"
             data-holding={holding}
-            className="press flex-1 touch-none select-none whitespace-nowrap rounded-full bg-pump px-4 py-3.5 font-display text-[22px] sm:text-2xl font-extrabold leading-none text-[#04130a] shadow-[0_0_30px_rgb(61_255_138/0.4)] transition-[box-shadow,transform] duration-150 [-webkit-touch-callout:none] data-[holding=true]:scale-[0.97] data-[holding=true]:shadow-[0_0_60px_rgb(61_255_138/0.8)]"
+            disabled={broke}
+            className="press flex-1 touch-none select-none whitespace-nowrap rounded-full bg-pump px-4 py-3.5 font-display text-[22px] sm:text-2xl font-extrabold leading-none text-[#04130a] shadow-[0_0_30px_rgb(61_255_138/0.4)] transition-[box-shadow,transform] duration-150 [-webkit-touch-callout:none] disabled:bg-white/10 disabled:text-ink/50 disabled:shadow-none data-[holding=true]:scale-[0.97] data-[holding=true]:shadow-[0_0_60px_rgb(61_255_138/0.8)]"
             {...holdProps}
           >
-            {showAgain ? "again" : "hold to pump"}
+            {broke ? "out of coins" : showAgain ? "again" : "hold to pump"}
           </button>
-          <button
-            type="button"
-            onClick={goToCa}
-            className="press flex-1 whitespace-nowrap rounded-full border border-energy/55 bg-energy/15 px-4 py-3.5 text-[15px] font-semibold leading-none text-ink backdrop-blur-sm hover:bg-energy/25"
-          >
-            connect wallet
-          </button>
+          {me ? (
+            <button
+              type="button"
+              onClick={() => scrollToId("top")}
+              className="press flex-1 whitespace-nowrap rounded-full border border-energy/55 bg-energy/15 px-4 py-3.5 font-mono text-[14px] font-semibold leading-none text-ink backdrop-blur-sm hover:bg-energy/25"
+            >
+              {shortWallet(me.wallet)}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void connectPhantom()}
+              disabled={connecting}
+              className="press flex-1 whitespace-nowrap rounded-full border border-energy/55 bg-energy/15 px-4 py-3.5 text-[15px] font-semibold leading-none text-ink backdrop-blur-sm hover:bg-energy/25 disabled:opacity-60"
+            >
+              {connecting ? "check phantom…" : "connect phantom"}
+            </button>
+          )}
         </div>
+        <p className="mt-2 h-4 text-center text-[12px] text-muted" aria-live="polite">
+          {notice ?? authError ?? ""}
+        </p>
       </div>
     </section>
   );
