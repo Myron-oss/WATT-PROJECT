@@ -61,8 +61,8 @@ all knobs live in `config.ts`. server code is in `lib/server/` and `app/api/`.
 
 the only thing a deployment needs is redis:
 
-1. vercel → your project → storage → create database → **upstash for redis** → connect to the project (it adds `KV_REST_API_URL` / `KV_REST_API_TOKEN`), then redeploy
-2. open `https://<your-site>/api/health`: `"ok": true` means sign-in and the leaderboard work
+1. vercel → your project → storage → create a **redis** database (redis cloud's free 30 mb, or upstash) → connect it to the project, then **redeploy**. either env style works: `REDIS_URL` or `KV_REST_API_URL` + `KV_REST_API_TOKEN`, with any prefix
+2. open `https://<your-site>/api/health`: `"ok": true` means sign-in and the leaderboard work. it also shows memory used and roughly how many more wallets fit (each wallet costs ~300–500 bytes per week; 30 mb ≈ 60k wallets a week, and old weeks expire on their own)
 3. set `contractAddress` in `config.ts` to the real token (prize eligibility can't be checked before that)
 
 optional: `SESSION_SECRET` (otherwise one is generated and kept in redis) and `SOLANA_RPC_URL` (the public rpc rate-limits). until redis is connected, visitors see "leaderboard offline" and can still play practice rounds.

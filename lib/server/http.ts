@@ -9,8 +9,10 @@ export const json = (body: unknown, status = 200) =>
 /** run a handler for the signed-in wallet; maps game errors to json */
 export function errorResponse(e: unknown) {
   if (e instanceof GameError) return json({ error: e.code, ...e.extra }, e.status);
-  if (e instanceof StoreMissing) {
-    console.error(e.message);
+  // no database, or it can't be reached: the game falls back to practice mode
+  const msg = e instanceof Error ? e.message : "";
+  if (e instanceof StoreMissing || /ECONNREFUSED|ENOTFOUND|ETIMEDOUT|Connection|Socket|WRONGPASS|NOAUTH/i.test(msg)) {
+    console.error("[store]", msg);
     return json({ error: "offline" }, 503);
   }
   console.error(e);

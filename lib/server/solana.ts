@@ -14,7 +14,7 @@ export async function wattBalance(wallet: string): Promise<number | null> {
   const mint = CONFIG.contractAddress;
   if (!isWallet(mint)) return null;
   const store = getStore();
-  const key = `bal:${mint}:${wallet}`;
+  const key = `b:${wallet}`;
   const cached = await store.get<{ v: number }>(key);
   if (cached) return cached.v;
   try {

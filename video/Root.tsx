@@ -2,6 +2,7 @@ import { Composition, continueRender, delayRender } from "remotion";
 import "../app/globals.css";
 import "./video.css";
 import { Promo } from "./Promo";
+import { Avatar, Banner } from "./Brand";
 import { T } from "./lib";
 
 // the site's fonts, straight from Google Fonts; rendering waits until they're in
@@ -31,6 +32,8 @@ export function Root() {
     <>
       <Composition id="Promo" component={Promo} durationInFrames={T.frames} fps={T.fps} width={1920} height={1080} />
       <Composition id="PromoVertical" component={Promo} durationInFrames={T.frames} fps={T.fps} width={1080} height={1920} />
+      <Composition id="Avatar" component={Avatar} durationInFrames={1} fps={30} width={1000} height={1000} />
+      <Composition id="Banner" component={Banner} durationInFrames={1} fps={30} width={3000} height={1000} />
     </>
   );
 }

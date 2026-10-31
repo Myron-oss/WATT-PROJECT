@@ -5,8 +5,9 @@
  *   node scripts/payout.mjs --week 2026-w44         # dry run for a given week
  *   node scripts/payout.mjs --keypair ~/prizes.json --send
  *
- * Needs (for the live leaderboard): UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
- * (or KV_REST_API_URL / KV_REST_API_TOKEN). Without them it reads the local dev store (.data/store.json).
+ * Needs the same database env vars as the site: REDIS_URL (redis cloud) or KV_REST_API_URL + _TOKEN (upstash),
+ * prefixes allowed — `vercel env pull .env.local` then `node --env-file=.env.local scripts/payout.mjs`.
+ * Without them it reads the local dev store (.data/store.json).
  * Optional: SOLANA_RPC_URL (defaults to mainnet-beta).
  *
  * The keypair is a Solana CLI JSON file (array of 64 numbers). Use a separate wallet that only
@@ -17,6 +18,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { Redis } from "@upstash/redis";
+import { createClient } from "redis";
 import { Connection, Keypair, LAMPORTS_PER_SOL, PublicKey, SystemProgram, Transaction, sendAndConfirmTransaction } from "@solana/web3.js";
 
 const { CONFIG } = await import("../config.ts");
@@ -45,14 +47,33 @@ if (week === weekOf(Date.now()).id) console.log(`⚠ ${week} is still running, t
 
 /* ---------- store ---------- */
 
-const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
-const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
-const redis = url && token ? new Redis({ url, token }) : null;
+const envBy = (re, valueRe) =>
+  Object.entries(process.env)
+    .filter(([k, v]) => re.test(k) && v && (!valueRe || valueRe.test(v)))
+    .sort((a, b) => a[0].length - b[0].length)[0]?.[1];
+const restUrl = envBy(/(KV_REST_API_URL|UPSTASH_REDIS_REST_URL)$/, /^https:\/\//);
+const restToken = envBy(/(KV_REST_API_TOKEN|UPSTASH_REDIS_REST_TOKEN)$/);
+const tcpUrl = envBy(/(REDIS_URL|KV_URL)$/, /^rediss?:\/\//);
 const localFile = join(process.cwd(), ".data", "store.json");
 
+// one tiny interface over upstash / redis / the dev file
+let db;
+if (restUrl && restToken) {
+  const r = new Redis({ url: restUrl, token: restToken, automaticDeserialization: false });
+  db = { name: "upstash", cmd: (args) => r.eval("return redis.call(unpack(ARGV))", [], args) };
+} else if (tcpUrl) {
+  const c = createClient({ url: tcpUrl });
+  await c.connect();
+  db = { name: "redis", cmd: (args) => c.sendCommand(args.map(String)), close: () => c.quit() };
+}
+const done = async (code = 0) => {
+  await db?.close?.();
+  process.exit(code);
+};
+
 async function topWallets(n) {
-  if (redis) {
-    const flat = await redis.zrange(`lb:${week}`, 0, n - 1, { rev: true, withScores: true });
+  if (db) {
+    const flat = await db.cmd(["ZRANGE", `lb:${week}`, 0, n - 1, "REV", "WITHSCORES"]);
     const out = [];
     for (let i = 0; i < flat.length; i += 2) out.push({ wallet: String(flat[i]), coins: Number(flat[i + 1]) });
     return out;
@@ -65,12 +86,15 @@ async function topWallets(n) {
     .map(([wallet, coins]) => ({ wallet, coins }));
 }
 async function getPaid() {
-  if (redis) return (await redis.get(`paid:${week}`)) ?? {};
+  if (db) {
+    const v = await db.cmd(["GET", `paid:${week}`]);
+    return v ? JSON.parse(String(v)) : {};
+  }
   if (!existsSync(localFile)) return {};
   return JSON.parse(readFileSync(localFile, "utf8")).kv?.[`paid:${week}`]?.v ?? {};
 }
 async function setPaid(paid) {
-  if (redis) return void (await redis.set(`paid:${week}`, paid, { ex: 365 * 864e2 }));
+  if (db) return void (await db.cmd(["SET", `paid:${week}`, JSON.stringify(paid), "EX", 365 * 86400]));
   const data = existsSync(localFile) ? JSON.parse(readFileSync(localFile, "utf8")) : { kv: {}, z: {} };
   data.kv[`paid:${week}`] = { v: paid };
   writeFileSync(localFile, JSON.stringify(data));
@@ -92,14 +116,14 @@ async function wattOf(wallet) {
 
 /* ---------- pick winners ---------- */
 
-console.log(`week ${week} · store: ${redis ? "upstash" : "local .data"} · rpc: ${RPC}`);
+console.log(`week ${week} · store: ${db?.name ?? "local .data"} · rpc: ${RPC}`);
 if (!mint) console.log(`⚠ contractAddress in config.ts isn't a real token address yet, so nobody can be checked for $watt`);
 
 const prizes = CONFIG.prizesSol;
 const candidates = await topWallets(50);
 if (!candidates.length) {
   console.log("nobody played that week.");
-  process.exit(0);
+  await done();
 }
 const paid = await getPaid();
 const winners = [];
@@ -126,23 +150,23 @@ console.log(`\n${todo.length} transfer(s), ${total.toFixed(4)} sol total (min $w
 
 if (!SEND) {
   console.log("dry run. add --keypair <file> --send to pay.");
-  process.exit(0);
+  await done();
 }
-if (!todo.length) process.exit(0);
+if (!todo.length) await done();
 
 /* ---------- send ---------- */
 
 const kpPath = (arg("keypair") ?? "").replace(/^~/, homedir());
 if (!kpPath || !existsSync(kpPath)) {
   console.error("--keypair <path to solana cli keypair json> is required with --send");
-  process.exit(1);
+  await done(1);
 }
 const payer = Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(kpPath, "utf8"))));
 const balance = (await conn.getBalance(payer.publicKey)) / LAMPORTS_PER_SOL;
 console.log(`\nfrom ${payer.publicKey.toBase58()} · balance ${balance.toFixed(4)} sol`);
 if (balance < total + 0.001 * todo.length) {
   console.error("not enough sol in the prize wallet for prizes + fees.");
-  process.exit(1);
+  await done(1);
 }
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -150,7 +174,7 @@ const answer = await rl.question(`type PAY to send ${total.toFixed(4)} sol to ${
 rl.close();
 if (answer.trim() !== "PAY") {
   console.log("cancelled, nothing sent.");
-  process.exit(0);
+  await done();
 }
 
 for (const w of todo) {
@@ -170,3 +194,4 @@ for (const w of todo) {
     console.error(`✗ ${w.wallet}: ${e.message}. rerun later; already-paid wallets are skipped.`);
   }
 }
+await done();

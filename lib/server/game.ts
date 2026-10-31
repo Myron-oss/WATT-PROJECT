@@ -8,7 +8,14 @@ import { CONFIG } from "@/config";
 import { crashFrom, floor2, growth, timeFor } from "@/lib/curve";
 import { getStore } from "./store";
 
-const KEEP_S = 60 * 864e2; // keep a week's data for 60 days (payouts happen after it ends)
+/*
+ * storage budget (fits a 30 MB free redis): per wallet per week ≈ one small key + one sorted-set entry
+ * (~300 bytes). player keys expire 2 days after their week, the leaderboard 21 days after
+ * (time to run payouts); round bookkeeping lives for minutes.
+ */
+const DAY = 86_400;
+const untilWeekEnd = (extraDays: number) => Math.max(DAY, Math.ceil((weekOf().end - Date.now()) / 1000) + extraDays * DAY);
+const SHORT_S = 300; // results + settle locks
 const MIN_GAP_MS = 700; // between rounds, per wallet
 
 /* ---------- weeks (monday 00:00 utc → next monday) ---------- */
@@ -28,14 +35,18 @@ export function weekOf(now = Date.now()) {
 /* ---------- players ---------- */
 
 export type Player = { coins: number; best: number; rounds: number; lastStart: number };
+/** stored as a compact array: [coins, best, rounds, lastStart] */
+type PackedPlayer = [number, number, number, number];
+const pack = (p: Player): PackedPlayer => [p.coins, Math.round(p.best * 100) / 100, p.rounds, p.lastStart];
+const unpack = (a: PackedPlayer): Player => ({ coins: a[0], best: a[1], rounds: a[2], lastStart: a[3] });
 
 const pKey = (week: string, wallet: string) => `p:${week}:${wallet}`;
 const lbKey = (week: string) => `lb:${week}`;
 
 export async function getPlayer(wallet: string, week = weekOf().id): Promise<Player> {
   const store = getStore();
-  const p = await store.get<Player>(pKey(week, wallet));
-  if (p) return p;
+  const p = await store.get<PackedPlayer>(pKey(week, wallet));
+  if (p) return unpack(p);
   const fresh: Player = { coins: CONFIG.weeklyCoins, best: 0, rounds: 0, lastStart: 0 };
   await savePlayer(wallet, fresh, week);
   return fresh;
@@ -43,9 +54,9 @@ export async function getPlayer(wallet: string, week = weekOf().id): Promise<Pla
 
 async function savePlayer(wallet: string, p: Player, week = weekOf().id) {
   const store = getStore();
-  await store.set(pKey(week, wallet), p, { ex: KEEP_S });
+  await store.set(pKey(week, wallet), pack(p), { ex: untilWeekEnd(2) });
   await store.zadd(lbKey(week), p.coins, wallet);
-  await store.expire(lbKey(week), KEEP_S);
+  await store.expire(lbKey(week), untilWeekEnd(21));
 }
 
 export async function rankOf(wallet: string, week = weekOf().id) {
@@ -130,7 +141,7 @@ export async function startRound(wallet: string, bet: number) {
 /** settle once; cashAt = server time of a cash-out request, or null when it crashed */
 async function settle(round: Round, cashAt: number | null): Promise<Result> {
   const store = getStore();
-  if (!(await store.set(`settle:${round.id}`, 1, { nx: true, ex: 3600 }))) {
+  if (!(await store.set(`settle:${round.id}`, 1, { nx: true, ex: SHORT_S }))) {
     // someone else settled it (cash-out vs crash race): return their result
     for (let i = 0; i < 20; i++) {
       const r = await store.get<Result>(resultKey(round.id));
@@ -160,7 +171,7 @@ async function settle(round: Round, cashAt: number | null): Promise<Result> {
     coins: p.coins,
     seed: round.seed,
   };
-  await store.set(resultKey(round.id), result, { ex: 3600 });
+  await store.set(resultKey(round.id), result, { ex: SHORT_S });
   await store.del(activeKey(round.wallet));
   return result;
 }
