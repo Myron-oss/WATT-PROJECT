@@ -2,7 +2,7 @@ export const CONFIG = {
   ticker: "$WATT",
   contractAddress: "PASTE_CA_HERE",
   pumpFunUrl: "https://pump.fun/PASTE_CA_HERE",
-  xUrl: "https://x.com/NDMHeatingSrvc",
+  xUrl: "https://x.com/WATT_PROJECT",
 
   // weekly leaderboard
   weeklyCoins: 100, // every wallet starts each week (monday 00:00 utc) with this many coins

@@ -22,7 +22,7 @@ export const CONFIG = {
   ticker: "$WATT",
   contractAddress: "PASTE_CA_HERE",
   pumpFunUrl: "https://pump.fun/PASTE_CA_HERE",
-  xUrl: "https://x.com/NDMHeatingSrvc",
+  xUrl: "https://x.com/WATT_PROJECT",
 };
 ```
 
