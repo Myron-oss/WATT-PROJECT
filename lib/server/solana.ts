@@ -7,7 +7,7 @@ import { getStore } from "./store";
 import { isWallet } from "./session";
 
 const RPC = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";
-const CACHE_S = 300;
+const CACHE_S = 1800; // holdings rarely change mid-week; 30 min keeps the rpc quiet
 
 /** null when the token address isn't configured yet or the RPC can't be reached */
 export async function wattBalance(wallet: string): Promise<number | null> {

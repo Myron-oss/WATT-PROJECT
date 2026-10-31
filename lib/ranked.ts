@@ -121,6 +121,7 @@ const SERVER_ERRORS: Record<string, string> = {
   bad_signature: "the signature didn't check out, try again",
   bad_request: "sign-in request was malformed, reload and retry",
   offline: "the leaderboard is offline right now. practice mode still works.",
+  slow_down: "one sec, try again",
   server: "something broke on our side, try again in a minute",
 };
 

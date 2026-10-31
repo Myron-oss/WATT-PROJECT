@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { GameError } from "./game";
 import { sessionWallet } from "./session";
-import { StoreMissing } from "./store";
+import { StoreMissing, getStore } from "./store";
 
 export const json = (body: unknown, status = 200) =>
   NextResponse.json(body, { status, headers: { "cache-control": "no-store" } });
@@ -36,4 +36,13 @@ export async function withWallet(fn: (wallet: string) => Promise<unknown>) {
   } catch (e) {
     return errorResponse(e);
   }
+}
+
+/** client ip as vercel reports it */
+export const ipOf = (req: Request) =>
+  (req.headers.get("x-forwarded-for")?.split(",")[0] ?? req.headers.get("x-real-ip") ?? "local").trim();
+
+/** true when this ip already did `name` within the last `seconds` (one cheap SET NX) */
+export async function tooSoon(req: Request, name: string, seconds: number) {
+  return !(await getStore().set(`rl:${name}:${ipOf(req)}`, 1, { nx: true, ex: seconds }));
 }

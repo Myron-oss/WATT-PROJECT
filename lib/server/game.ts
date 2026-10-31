@@ -49,6 +49,7 @@ export async function getPlayer(wallet: string, week = weekOf().id): Promise<Pla
   if (p) return unpack(p);
   const fresh: Player = { coins: CONFIG.weeklyCoins, best: 0, rounds: 0, lastStart: 0 };
   await savePlayer(wallet, fresh, week);
+  await store.expire(lbKey(week), untilWeekEnd(21)); // once per new wallet, not on every save
   return fresh;
 }
 
@@ -56,7 +57,6 @@ async function savePlayer(wallet: string, p: Player, week = weekOf().id) {
   const store = getStore();
   await store.set(pKey(week, wallet), pack(p), { ex: untilWeekEnd(2) });
   await store.zadd(lbKey(week), p.coins, wallet);
-  await store.expire(lbKey(week), untilWeekEnd(21));
 }
 
 export async function rankOf(wallet: string, week = weekOf().id) {

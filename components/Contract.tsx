@@ -127,30 +127,17 @@ export function Contract() {
             buy on pump.fun
           </a>
 
-          <div className="mt-7 flex items-center gap-3">
-            <a
-              href={CONFIG.xUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="x"
-              className="press grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.03] text-ink/80 hover:border-white/25 hover:text-ink"
-            >
-              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden>
-                <path d="M17.75 3h3.07l-6.71 7.67L22 21h-6.18l-4.84-6.33L5.44 21H2.37l7.18-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.72H5.57L16.67 19.2Z" />
-              </svg>
-            </a>
-            <a
-              href={CONFIG.telegramUrl}
-              target="_blank"
-              rel="noreferrer"
-              aria-label="telegram"
-              className="press grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.03] text-ink/80 hover:border-white/25 hover:text-ink"
-            >
-              <svg viewBox="0 0 24 24" width="19" height="19" fill="currentColor" aria-hidden>
-                <path d="M21.94 4.6 18.9 19.04c-.23 1.02-.83 1.27-1.69.79l-4.66-3.44-2.25 2.16c-.25.25-.46.46-.94.46l.34-4.74 8.63-7.8c.38-.33-.08-.52-.58-.19L7.08 13.0l-4.6-1.44c-1-.31-1.02-1 .21-1.48l17.98-6.93c.83-.31 1.56.19 1.27 1.45Z" />
-              </svg>
-            </a>
-          </div>
+          <a
+            href={CONFIG.xUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="press mt-6 inline-flex items-center gap-2.5 rounded-full border border-white/12 bg-white/[0.04] px-5 py-2.5 text-[15px] font-semibold text-ink/85 hover:border-white/25 hover:text-ink"
+          >
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden>
+              <path d="M17.75 3h3.07l-6.71 7.67L22 21h-6.18l-4.84-6.33L5.44 21H2.37l7.18-8.2L2 3h6.33l4.37 5.78L17.75 3Zm-1.08 16.2h1.7L7.4 4.72H5.57L16.67 19.2Z" />
+            </svg>
+            follow on x
+          </a>
         </div>
       </div>
 

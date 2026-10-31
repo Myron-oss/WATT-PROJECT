@@ -13,7 +13,6 @@ type Board = {
   minWatt: number;
   tokenSet: boolean;
   rows: Row[];
-  me: { wallet: string; rank: number | null; coins: number } | null;
 };
 
 function useCountdown(to: number | undefined) {
@@ -56,7 +55,7 @@ export function Leaderboard() {
       clearInterval(timer);
       if (visible) {
         void load();
-        timer = window.setInterval(load, 15_000);
+        timer = window.setInterval(load, 30_000);
       }
     });
     if (ref.current) io.observe(ref.current);
@@ -116,9 +115,9 @@ export function Leaderboard() {
           })}
         </ol>
 
-        {me && !meInTop && board?.me && (
+        {me && !meInTop && (
           <p className="mt-3 text-center font-mono text-[13px] text-ink/70">
-            you: #{board.me.rank ?? "—"} · {fmt(board.me.coins)} coins
+            you: #{me.rank ?? "—"} · {fmt(me.coins)} coins
           </p>
         )}
 
