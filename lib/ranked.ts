@@ -120,7 +120,8 @@ const SERVER_ERRORS: Record<string, string> = {
   bad_wallet: "phantom returned an address the server didn't accept",
   bad_signature: "the signature didn't check out, try again",
   bad_request: "sign-in request was malformed, reload and retry",
-  server: "the sign-in server isn't set up (SESSION_SECRET / redis), see README",
+  offline: "the leaderboard is offline right now. practice mode still works.",
+  server: "something broke on our side, try again in a minute",
 };
 
 /** connect phantom, sign the one-time message, start a session */

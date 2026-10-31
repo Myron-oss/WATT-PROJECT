@@ -12,14 +12,23 @@ const COOKIE = "watt_session";
 const SESSION_DAYS = 7;
 const NONCE_TTL = 300;
 
-function secret() {
-  const s = process.env.SESSION_SECRET;
-  if (s && s.length >= 32) return s;
-  if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET (32+ chars) is not set");
-  return "dev-only-insecure-session-secret-change-me";
+let cachedSecret: string | null = null;
+
+/**
+ * SESSION_SECRET if set; otherwise a random one generated once and kept in the store,
+ * so a deployment only needs redis to work.
+ */
+async function secret() {
+  const env = process.env.SESSION_SECRET;
+  if (env && env.length >= 32) return env;
+  if (cachedSecret) return cachedSecret;
+  const store = getStore();
+  await store.set("cfg:session_secret", randomBytes(48).toString("base64url"), { nx: true });
+  cachedSecret = (await store.get<string>("cfg:session_secret"))!;
+  return cachedSecret;
 }
 
-const sign = (payload: string) => createHmac("sha256", secret()).update(payload).digest("base64url");
+const sign = async (payload: string) => createHmac("sha256", await secret()).update(payload).digest("base64url");
 
 export function isWallet(s: unknown): s is string {
   if (typeof s !== "string" || s.length < 32 || s.length > 44) return false;
@@ -66,7 +75,7 @@ export async function verifySignIn(wallet: string, signatureB64: string) {
   if (!ok) return false;
   const exp = Date.now() + SESSION_DAYS * 864e5;
   const payload = `${wallet}.${exp}`;
-  (await cookies()).set(COOKIE, `${payload}.${sign(payload)}`, {
+  (await cookies()).set(COOKIE, `${payload}.${await sign(payload)}`, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
@@ -82,7 +91,7 @@ export async function sessionWallet(): Promise<string | null> {
   if (!raw) return null;
   const [wallet, exp, mac] = raw.split(".");
   if (!wallet || !exp || !mac || Number(exp) < Date.now()) return null;
-  const want = Buffer.from(sign(`${wallet}.${exp}`));
+  const want = Buffer.from(await sign(`${wallet}.${exp}`));
   const got = Buffer.from(mac);
   if (want.length !== got.length || !timingSafeEqual(want, got)) return null;
   return isWallet(wallet) ? wallet : null;

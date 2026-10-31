@@ -35,6 +35,7 @@ const fmt = (n: number) => n.toLocaleString("en-US");
 export function Leaderboard() {
   const { me, connecting } = useRanked();
   const [board, setBoard] = useState<Board | null>(null);
+  const [offline, setOffline] = useState(false);
   const ref = useRef<HTMLElement>(null);
   const left = useCountdown(board?.endsAt);
 
@@ -44,9 +45,12 @@ export function Leaderboard() {
     let visible = false;
     const load = () =>
       fetch("/api/leaderboard", { cache: "no-store" })
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          setOffline(!r.ok);
+          return r.ok ? r.json() : null;
+        })
         .then((b) => b && setBoard(b))
-        .catch(() => {});
+        .catch(() => setOffline(true));
     const io = new IntersectionObserver(([e]) => {
       visible = e.isIntersecting;
       clearInterval(timer);
@@ -80,7 +84,7 @@ export function Leaderboard() {
           </p>
           <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 font-mono text-[12px] text-ink/75">
             <span className="h-1.5 w-1.5 rounded-full bg-pump shadow-[0_0_6px_#3DFF8A]" />
-            {board ? `${board.week} · ends in ${left}` : "loading…"}
+            {board ? `${board.week} · ends in ${left}` : offline ? "offline right now · practice still works" : "loading…"}
           </p>
         </div>
 

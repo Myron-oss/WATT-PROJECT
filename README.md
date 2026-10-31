@@ -59,9 +59,13 @@ all knobs live in `config.ts`. server code is in `lib/server/` and `app/api/`.
 
 ### setup
 
-1. set `contractAddress` in `config.ts` to the real token (eligibility can't be checked before that)
-2. copy `.env.example` to `.env.local` and fill it in; add the same keys on vercel
-3. on vercel: storage → create upstash for redis → connect to the project (it sets `KV_REST_API_URL` / `KV_REST_API_TOKEN`)
+the only thing a deployment needs is redis:
+
+1. vercel → your project → storage → create database → **upstash for redis** → connect to the project (it adds `KV_REST_API_URL` / `KV_REST_API_TOKEN`), then redeploy
+2. open `https://<your-site>/api/health`: `"ok": true` means sign-in and the leaderboard work
+3. set `contractAddress` in `config.ts` to the real token (prize eligibility can't be checked before that)
+
+optional: `SESSION_SECRET` (otherwise one is generated and kept in redis) and `SOLANA_RPC_URL` (the public rpc rate-limits). until redis is connected, visitors see "leaderboard offline" and can still play practice rounds.
 
 locally, without redis, everything is stored in `.data/store.json`.
 

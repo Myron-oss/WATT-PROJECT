@@ -141,6 +141,13 @@ function fileStore(): Store {
   };
 }
 
+/** serverless hosts have no shared disk: the leaderboard needs redis there */
+export class StoreMissing extends Error {
+  constructor() {
+    super("no redis configured: connect upstash for redis to the vercel project");
+  }
+}
+
 let store: Store | null = null;
 
 export function getStore(): Store {
@@ -148,7 +155,7 @@ export function getStore(): Store {
   const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (url && token) store = redisStore(url, token);
-  else if (process.env.VERCEL) throw new Error("no redis configured: set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN");
+  else if (process.env.VERCEL) throw new StoreMissing();
   else store = fileStore();
   return store;
 }
