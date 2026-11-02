@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CONFIG } from "@/config";
 import { WeldText } from "./WeldText";
-import { connectPhantom, shortWallet, signOutRanked, useRanked } from "@/lib/ranked";
+import { connectPhantom, refreshMe, shortWallet, signOutRanked, useRanked } from "@/lib/ranked";
 
 type Row = { rank: number; wallet: string; coins: number; eligible: boolean | null };
 type Board = {
@@ -79,7 +79,7 @@ export function Leaderboard() {
         <div className="text-center">
           <WeldText as="h2" text="weekly top 10" className="text-[clamp(44px,10vw,84px)] leading-[0.95]" />
           <p className="mx-auto mt-3 max-w-md text-sm text-muted">
-            every wallet gets {CONFIG.weeklyCoins} coins on monday. most coins on sunday 23:59 utc wins sol.
+            every $watt holder gets {CONFIG.weeklyCoins} coins on monday. most coins on sunday 23:59 utc wins sol.
           </p>
           <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/30 px-3 py-1 font-mono text-[12px] text-ink/75">
             <span className="h-1.5 w-1.5 rounded-full bg-pump shadow-[0_0_6px_#3DFF8A]" />
@@ -115,7 +115,7 @@ export function Leaderboard() {
           })}
         </ol>
 
-        {me && !meInTop && (
+        {me?.ranked && !meInTop && (
           <p className="mt-3 text-center font-mono text-[13px] text-ink/70">
             you: #{me.rank ?? "—"} · {fmt(me.coins)} coins
           </p>
@@ -126,11 +126,33 @@ export function Leaderboard() {
             <>
               <p className="text-center text-[13px] text-ink/70">
                 playing as <span className="font-mono text-ink">{shortWallet(me.wallet)}</span>
+                {me.holder === false && (
+                  <span className="ml-2 text-danger">· no $watt in this wallet, so no coins yet</span>
+                )}
                 {me.eligible === true && <span className="ml-2 text-pump">· prize eligible</span>}
-                {me.eligible === false && (
+                {me.holder === true && me.eligible === false && (
                   <span className="ml-2 text-danger">· hold {fmt(CONFIG.minWattForPrize)} $watt to be eligible</span>
                 )}
               </p>
+              {!me.ranked && (
+                <div className="flex flex-wrap items-center justify-center gap-2">
+                  <a
+                    href={CONFIG.pumpFunUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="press rounded-full bg-pump px-5 py-2.5 text-[14px] font-bold text-[#04130a]"
+                  >
+                    buy $watt
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => void refreshMe()}
+                    className="press rounded-full border border-white/15 px-5 py-2.5 text-[14px] font-semibold text-ink/85 hover:text-ink"
+                  >
+                    i bought, check again
+                  </button>
+                </div>
+              )}
               <button type="button" onClick={() => void signOutRanked()} className="press text-[12px] text-muted underline-offset-4 hover:underline">
                 sign out
               </button>
@@ -154,7 +176,8 @@ export function Leaderboard() {
             · to win a prize, the wallet must hold at least {fmt(CONFIG.minWattForPrize)} $watt when prizes are sent (after sunday).
             if a top-10 wallet doesn&apos;t, the prize goes to the next one that does.
           </li>
-          <li>· play money only. coins can&apos;t be bought, sold or withdrawn.</li>
+          <li>· coins only go to wallets holding $watt. everyone else can play free practice rounds.</li>
+          <li>· play money only. coins can&apos;t be sold or withdrawn.</li>
         </ul>
       </div>
     </section>

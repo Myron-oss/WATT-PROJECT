@@ -357,8 +357,8 @@ export function Game() {
     setNotice(null);
     const signedIn = meRef.current;
 
-    // practice: free, local, no coins
-    if (!signedIn) {
+    // practice: free, local, no coins. for anyone signed out or not holding $watt
+    if (!signedIn?.ranked) {
       st.stake = 0;
       setHolding(true);
       startRound(rollCrash());
@@ -393,11 +393,15 @@ export function Game() {
             ? "session expired, connect again"
             : e.code === "no_coins"
               ? "out of coins till monday"
-              : e.code === "busy"
-                ? "your last round is still running"
-                : e.code === "too_fast"
-                  ? "easy, one round at a time"
-                  : "couldn't start the round",
+              : e.code === "not_holder"
+                ? "you need $watt in this wallet to play for coins"
+                : e.code === "unverified"
+                  ? "couldn't read your $watt balance, try again in a minute"
+                  : e.code === "busy"
+                    ? "your last round is still running"
+                    : e.code === "too_fast"
+                      ? "easy, one round at a time"
+                      : "couldn't start the round",
         );
         void refreshMe();
       });
@@ -775,7 +779,8 @@ export function Game() {
   const live = phase === "running" || phase === "overheat";
   const tone = phase === "overheat" || phase === "knocked" ? "hot" : phase === "ready" ? "idle" : "pump";
   const coinsNow = me?.coins ?? 0;
-  const broke = !!me && coinsNow < 1 && !live && !holding;
+  const ranked = !!me?.ranked;
+  const broke = ranked && coinsNow < 1 && !live && !holding;
   const bubble = broke ? "broke till monday" : BUBBLE[phase];
   const bgState = (i: number): HamsterState => bgOverride[i] ?? (live && i < alive ? "running" : "idle");
 
@@ -930,7 +935,7 @@ export function Game() {
 
         {/* ranked: weekly coins + bet · signed out: practice */}
         <div className="mt-4 flex h-9 w-full max-w-md items-center justify-center gap-2">
-          {me ? (
+          {ranked && me ? (
             <>
               <div
                 ref={balanceRef}
@@ -974,7 +979,7 @@ export function Game() {
           ) : (
             <p className="flex items-center gap-2 rounded-full border border-white/10 bg-[rgb(20_17_28/0.6)] px-3 py-1.5 text-[12px] font-semibold text-ink/70 backdrop-blur-sm">
               <span className="h-1.5 w-1.5 rounded-full bg-energy shadow-[0_0_6px_#8B5CF6]" />
-              practice · connect phantom to play for the weekly prize
+              {me ? `practice · hold $watt to get ${CONFIG.weeklyCoins} coins` : "practice · $watt holders play for the weekly prize"}
             </p>
           )}
         </div>

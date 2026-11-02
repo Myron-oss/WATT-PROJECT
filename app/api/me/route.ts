@@ -1,5 +1,5 @@
 import { CONFIG } from "@/config";
-import { getPlayer, rankOf, sweep, weekOf } from "@/lib/server/game";
+import { grantCoins, peekPlayer, rankOf, sweep, weekOf } from "@/lib/server/game";
 import { withWallet } from "@/lib/server/http";
 import { wattBalance } from "@/lib/server/solana";
 
@@ -9,13 +9,18 @@ export async function GET() {
   return withWallet(async (wallet) => {
     const active = await sweep(wallet);
     const week = weekOf();
-    const p = await getPlayer(wallet, week.id); // creates the week's bankroll on first visit
-    const [rank, watt] = await Promise.all([rankOf(wallet, week.id), wattBalance(wallet)]);
+    const watt = await wattBalance(wallet);
+    const holder = watt === null ? null : watt >= CONFIG.minWattToPlay;
+    // the week's coins go to holders only, on their first visit
+    const p = (await peekPlayer(wallet, week.id)) ?? (holder ? await grantCoins(wallet, week.id) : null);
+    const rank = p ? await rankOf(wallet, week.id) : null;
     return {
       wallet,
-      coins: p.coins,
-      best: p.best,
-      rounds: p.rounds,
+      ranked: !!p && holder !== false, // may play for coins right now
+      holder,
+      coins: p?.coins ?? 0,
+      best: p?.best ?? 0,
+      rounds: p?.rounds ?? 0,
       rank,
       watt,
       eligible: watt === null ? null : watt >= CONFIG.minWattForPrize,

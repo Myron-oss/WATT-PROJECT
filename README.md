@@ -49,7 +49,8 @@ in `components/Game.tsx`: `GROW_A` / `GROW_B` set how fast the multiplier grows 
 
 signed-out visitors play free practice rounds. connecting phantom signs a one-time message (not a transaction) and joins the weekly game:
 
-- every wallet gets `weeklyCoins` (100) each monday 00:00 utc; the balance at sunday 23:59 utc is the score
+- every wallet holding at least `minWattToPlay` $watt gets `weeklyCoins` (100) each monday 00:00 utc; the balance at sunday 23:59 utc is the score. everyone else plays free practice rounds
+- to wipe the game (all coins + the leaderboard), change `season` in `config.ts` and deploy; old data expires by itself
 - the server runs every ranked round: it picks the crash point before the round (sha256 of the seed is returned at start, the seed is revealed after), and times the cash-out when the request arrives
 - top 10 win `prizesSol`, but only wallets holding at least `minWattForPrize` $watt when prizes are paid; an ineligible wallet's prize goes to the next eligible one
 - coins are play money: they can't be bought, sold or withdrawn

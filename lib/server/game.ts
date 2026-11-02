@@ -7,6 +7,7 @@ import { createHash, createHmac, randomBytes, randomUUID } from "node:crypto";
 import { CONFIG } from "@/config";
 import { crashFrom, floor2, growth, timeFor } from "@/lib/curve";
 import { getStore } from "./store";
+import { isHolder } from "./solana";
 
 /*
  * storage budget (fits a 30 MB free redis): per wallet per week ≈ one small key + one sorted-set entry
@@ -40,15 +41,25 @@ type PackedPlayer = [number, number, number, number];
 const pack = (p: Player): PackedPlayer => [p.coins, Math.round(p.best * 100) / 100, p.rounds, p.lastStart];
 const unpack = (a: PackedPlayer): Player => ({ coins: a[0], best: a[1], rounds: a[2], lastStart: a[3] });
 
-const pKey = (week: string, wallet: string) => `p:${week}:${wallet}`;
-const lbKey = (week: string) => `lb:${week}`;
+// the season prefix is the reset switch: a new season sees none of the old data
+const pKey = (week: string, wallet: string) => `p:${CONFIG.season}:${week}:${wallet}`;
+const lbKey = (week: string) => `lb:${CONFIG.season}:${week}`;
 
-export async function getPlayer(wallet: string, week = weekOf().id): Promise<Player> {
+/** this week's record, without creating one */
+export async function peekPlayer(wallet: string, week = weekOf().id): Promise<Player | null> {
+  const p = await getStore().get<PackedPlayer>(pKey(week, wallet));
+  return p ? unpack(p) : null;
+}
+
+/** hands a holder the week's coins, once. only call after checking they hold $watt. */
+export async function grantCoins(wallet: string, week = weekOf().id): Promise<Player> {
   const store = getStore();
-  const p = await store.get<PackedPlayer>(pKey(week, wallet));
-  if (p) return unpack(p);
   const fresh: Player = { coins: CONFIG.weeklyCoins, best: 0, rounds: 0, lastStart: 0 };
-  await savePlayer(wallet, fresh, week);
+  // nx: two tabs arriving together can't overwrite a bet that's already been taken
+  if (!(await store.set(pKey(week, wallet), pack(fresh), { nx: true, ex: untilWeekEnd(2) }))) {
+    return (await peekPlayer(wallet, week)) ?? fresh;
+  }
+  await store.zadd(lbKey(week), fresh.coins, wallet);
   await store.expire(lbKey(week), untilWeekEnd(21)); // once per new wallet, not on every save
   return fresh;
 }
@@ -97,7 +108,7 @@ const resultKey = (id: string) => `result:${id}`;
 
 export class GameError extends Error {
   constructor(
-    public code: "no_coins" | "bad_bet" | "busy" | "too_fast" | "no_round",
+    public code: "no_coins" | "bad_bet" | "busy" | "too_fast" | "no_round" | "not_holder" | "unverified",
     public status = 400,
     public extra: Record<string, unknown> = {},
   ) {
@@ -116,7 +127,14 @@ export async function startRound(wallet: string, bet: number) {
     else throw new GameError("busy", 409, { id: prev.id });
   }
 
-  const p = await getPlayer(wallet, week);
+  // coins are for $watt holders only. if the balance can't be read right now, someone who
+  // already has coins keeps playing, but nobody new gets any.
+  const holder = await isHolder(wallet);
+  if (holder === false) throw new GameError("not_holder", 403);
+  const existing = await peekPlayer(wallet, week);
+  if (!existing && holder === null) throw new GameError("unverified", 503);
+  const p = existing ?? (await grantCoins(wallet, week));
+
   if (!Number.isInteger(bet) || bet < 1) throw new GameError("bad_bet");
   if (p.coins < 1) throw new GameError("no_coins");
   if (bet > p.coins) throw new GameError("bad_bet");
@@ -155,7 +173,7 @@ async function settle(round: Round, cashAt: number | null): Promise<Result> {
   const m = won ? Math.min(floor2(growth(elapsed / 1000)), round.crash) : round.crash;
   const payout = won ? Math.floor(round.bet * m) : 0;
 
-  const p = await getPlayer(round.wallet, round.week);
+  const p = (await peekPlayer(round.wallet, round.week)) ?? { coins: 0, best: 0, rounds: 0, lastStart: 0 };
   p.coins += payout;
   p.rounds += 1;
   if (won) p.best = Math.max(p.best, m);

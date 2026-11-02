@@ -8,6 +8,10 @@ import { useSyncExternalStore } from "react";
 
 export type Me = {
   wallet: string;
+  /** may play for coins right now (holds $watt and has this week's coins) */
+  ranked: boolean;
+  /** holds $watt; null when the balance can't be read right now */
+  holder: boolean | null;
   coins: number;
   best: number;
   rounds: number;

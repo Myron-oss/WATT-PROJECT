@@ -73,13 +73,13 @@ const done = async (code = 0) => {
 
 async function topWallets(n) {
   if (db) {
-    const flat = await db.cmd(["ZRANGE", `lb:${week}`, 0, n - 1, "REV", "WITHSCORES"]);
+    const flat = await db.cmd(["ZRANGE", `lb:${CONFIG.season}:${week}`, 0, n - 1, "REV", "WITHSCORES"]);
     const out = [];
     for (let i = 0; i < flat.length; i += 2) out.push({ wallet: String(flat[i]), coins: Number(flat[i + 1]) });
     return out;
   }
   if (!existsSync(localFile)) return [];
-  const z = JSON.parse(readFileSync(localFile, "utf8")).z?.[`lb:${week}`] ?? {};
+  const z = JSON.parse(readFileSync(localFile, "utf8")).z?.[`lb:${CONFIG.season}:${week}`] ?? {};
   return Object.entries(z)
     .sort((a, b) => b[1] - a[1])
     .slice(0, n)
@@ -87,16 +87,16 @@ async function topWallets(n) {
 }
 async function getPaid() {
   if (db) {
-    const v = await db.cmd(["GET", `paid:${week}`]);
+    const v = await db.cmd(["GET", `paid:${CONFIG.season}:${week}`]);
     return v ? JSON.parse(String(v)) : {};
   }
   if (!existsSync(localFile)) return {};
-  return JSON.parse(readFileSync(localFile, "utf8")).kv?.[`paid:${week}`]?.v ?? {};
+  return JSON.parse(readFileSync(localFile, "utf8")).kv?.[`paid:${CONFIG.season}:${week}`]?.v ?? {};
 }
 async function setPaid(paid) {
-  if (db) return void (await db.cmd(["SET", `paid:${week}`, JSON.stringify(paid), "EX", 365 * 86400]));
+  if (db) return void (await db.cmd(["SET", `paid:${CONFIG.season}:${week}`, JSON.stringify(paid), "EX", 365 * 86400]));
   const data = existsSync(localFile) ? JSON.parse(readFileSync(localFile, "utf8")) : { kv: {}, z: {} };
-  data.kv[`paid:${week}`] = { v: paid };
+  data.kv[`paid:${CONFIG.season}:${week}`] = { v: paid };
   writeFileSync(localFile, JSON.stringify(data));
 }
 
