@@ -109,7 +109,7 @@ export function Contract() {
             className="seam press group relative w-full max-w-2xl rounded-2xl bg-black/40 px-4 py-5 md:px-8 md:py-7"
           >
             <span className="mb-2 block text-left font-mono text-[11px] text-muted">ca</span>
-            <span className="ca-glow block truncate text-center font-mono text-[clamp(18px,4.6vw,28px)] font-semibold tracking-tight">
+            <span className="ca-glow block truncate text-center font-mono text-[clamp(18px,4.6vw,28px)] md:text-[clamp(18px,2.6vw,22px)] font-semibold tracking-tight">
               <span className="md:hidden">{shortCa(CONFIG.contractAddress)}</span>
               <span className="hidden md:inline">{CONFIG.contractAddress}</span>
             </span>

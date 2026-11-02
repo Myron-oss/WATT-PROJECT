@@ -20,8 +20,8 @@ edit `config.ts`:
 ```ts
 export const CONFIG = {
   ticker: "$WATT",
-  contractAddress: "PASTE_CA_HERE",
-  pumpFunUrl: "https://pump.fun/PASTE_CA_HERE",
+  contractAddress: "2dywBj26GeL5J7n2Unass4ydtMr8MDLzNJ5n1bNxpump",
+  pumpFunUrl: "https://pump.fun/2dywBj26GeL5J7n2Unass4ydtMr8MDLzNJ5n1bNxpump",
   xUrl: "https://x.com/WATT_PROJECT",
 };
 ```
